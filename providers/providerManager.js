@@ -4,7 +4,7 @@ const providers = {};
 
 
 /* =========================================================
-   REGISTER
+   REGISTER PROVIDER
    ========================================================= */
 
 function registerProvider(provider) {
@@ -14,11 +14,12 @@ function registerProvider(provider) {
     }
 
     providers[provider.name] = provider;
+
 }
 
 
 /* =========================================================
-   REMOVE
+   REMOVE PROVIDER
    ========================================================= */
 
 function removeProvider(name) {
@@ -29,12 +30,43 @@ function removeProvider(name) {
 
 
 /* =========================================================
-   LIST
+   PROVIDER LIST
    ========================================================= */
 
 function getProviders() {
 
     return Object.keys(providers);
+
+}
+
+
+/* =========================================================
+   PROVIDER STATUS
+   ========================================================= */
+
+function getStatus() {
+
+    return Object.keys(providers).map(
+        function(name) {
+
+            const provider =
+                providers[name];
+
+            return {
+
+                name:
+                    provider.name,
+
+                markets:
+                    provider.markets || [],
+
+                capabilities:
+                    provider.capabilities || []
+
+            };
+
+        }
+    );
 
 }
 
@@ -47,28 +79,39 @@ function detectMarket(symbol) {
 
     const value =
         String(symbol || '')
-        .trim()
-        .toUpperCase();
+            .trim()
+            .toUpperCase();
 
 
-    if (value.indexOf('NSE:') === 0) {
+    if (
+        value.indexOf('NSE:') === 0 ||
+        value.indexOf('BSE:') === 0
+    ) {
+
         return 'INDIA';
+
     }
 
-    if (value.indexOf('BSE:') === 0) {
-        return 'INDIA';
-    }
 
-    if (value.indexOf('FX:') === 0) {
+    if (
+        value.indexOf('FX:') === 0
+    ) {
+
         return 'FOREX';
+
     }
 
-    if (value.indexOf('US:') === 0) {
+
+    if (
+        value.indexOf('US:') === 0
+    ) {
+
         return 'US';
+
     }
 
 
-    const indian = [
+    const indianSymbols = [
 
         'RELIANCE',
         'TCS',
@@ -93,13 +136,15 @@ function detectMarket(symbol) {
 
 
     if (
-        indian.indexOf(value) >= 0
+        indianSymbols.indexOf(value) >= 0
     ) {
+
         return 'INDIA';
+
     }
 
 
-    const forex = [
+    const forexSymbols = [
 
         'EURUSD',
         'GBPUSD',
@@ -118,38 +163,71 @@ function detectMarket(symbol) {
 
 
     if (
-        forex.indexOf(value) >= 0
+        forexSymbols.indexOf(value) >= 0
     ) {
+
         return 'FOREX';
+
     }
 
 
     return 'UNKNOWN';
+
 }
 
 
 /* =========================================================
-   NORMALIZE
+   SYMBOL NORMALIZATION
    ========================================================= */
 
 function normalizeSymbol(symbol) {
 
     let value =
         String(symbol || '')
-        .trim()
-        .toUpperCase();
+            .trim()
+            .toUpperCase();
 
 
     if (!value) {
+
         throw new Error(
             'Symbol is required'
         );
+
     }
 
 
+    value =
+        value.replace(
+            /\//g,
+            ''
+        );
+
+
+    /*
+     * Already normalized.
+     */
+
+    if (
+        value.indexOf('NSE:') === 0 ||
+        value.indexOf('BSE:') === 0 ||
+        value.indexOf('FX:') === 0 ||
+        value.indexOf('US:') === 0
+    ) {
+
+        return value;
+
+    }
+
+
+    /*
+     * Indian indices.
+     */
+
     if (
         value === 'NIFTY50' ||
-        value === 'NIFTY 50'
+        value === 'NIFTY 50' ||
+        value === 'NIFTY'
     ) {
 
         return 'NSE:NIFTY50';
@@ -167,17 +245,11 @@ function normalizeSymbol(symbol) {
     }
 
 
-    if (
-        value.indexOf('/') > 0
-    ) {
+    /*
+     * Forex.
+     */
 
-        value =
-            value.replace(/\//g, '');
-
-    }
-
-
-    const forex = [
+    const forexSymbols = [
 
         'EURUSD',
         'GBPUSD',
@@ -196,7 +268,7 @@ function normalizeSymbol(symbol) {
 
 
     if (
-        forex.indexOf(value) >= 0
+        forexSymbols.indexOf(value) >= 0
     ) {
 
         return 'FX:' + value;
@@ -204,7 +276,11 @@ function normalizeSymbol(symbol) {
     }
 
 
-    const indian = [
+    /*
+     * Indian equities.
+     */
+
+    const indianSymbols = [
 
         'RELIANCE',
         'TCS',
@@ -226,7 +302,7 @@ function normalizeSymbol(symbol) {
 
 
     if (
-        indian.indexOf(value) >= 0
+        indianSymbols.indexOf(value) >= 0
     ) {
 
         return 'NSE:' + value;
@@ -235,14 +311,15 @@ function normalizeSymbol(symbol) {
 
 
     return value;
+
 }
 
 
 /* =========================================================
-   FIND PROVIDER
+   FIND ELIGIBLE PROVIDERS
    ========================================================= */
 
-function findProvider(
+function findProviders(
     symbol,
     operation
 ) {
@@ -250,11 +327,16 @@ function findProvider(
     const normalized =
         normalizeSymbol(symbol);
 
+
     const market =
         detectMarket(normalized);
 
+
     const names =
         Object.keys(providers);
+
+
+    const result = [];
 
 
     for (
@@ -267,6 +349,17 @@ function findProvider(
             providers[names[i]];
 
 
+        if (
+            !provider ||
+            typeof provider.canHandle !==
+            'function'
+        ) {
+
+            continue;
+
+        }
+
+
         try {
 
             if (
@@ -277,14 +370,17 @@ function findProvider(
                 )
             ) {
 
-                return provider;
+                result.push(
+                    provider
+                );
 
             }
 
-        } catch (error) {
+        }
+        catch(error) {
 
             console.error(
-                'Provider check error:',
+                'Provider eligibility error:',
                 provider.name,
                 error.message
             );
@@ -294,7 +390,209 @@ function findProvider(
     }
 
 
-    return null;
+    return result;
+
+}
+
+
+/* =========================================================
+   GENERIC FALLBACK EXECUTOR
+   ========================================================= */
+
+async function executeWithFallback(
+    symbol,
+    operation,
+    methodName,
+    args
+) {
+
+    const normalized =
+        normalizeSymbol(symbol);
+
+
+    const market =
+        detectMarket(normalized);
+
+
+    const candidates =
+        findProviders(
+            normalized,
+            operation
+        );
+
+
+    if (
+        candidates.length === 0
+    ) {
+
+        return {
+
+            success:
+                false,
+
+            status:
+                'unavailable',
+
+            symbol:
+                normalized,
+
+            market:
+                market,
+
+            operation:
+                operation,
+
+            reason:
+                'No eligible provider available'
+
+        };
+
+    }
+
+
+    const errors = [];
+
+
+    for (
+        let i = 0;
+        i < candidates.length;
+        i++
+    ) {
+
+        const provider =
+            candidates[i];
+
+
+        if (
+            typeof provider[methodName] !==
+            'function'
+        ) {
+
+            errors.push({
+
+                provider:
+                    provider.name,
+
+                error:
+                    methodName +
+                    ' is not implemented'
+
+            });
+
+            continue;
+
+        }
+
+
+        try {
+
+            const data =
+                await provider[methodName]
+                    .apply(
+                        provider,
+                        args
+                    );
+
+
+            /*
+             * Provider may return
+             * either raw data or a
+             * structured response.
+             */
+
+            if (
+                data &&
+                data.success === false
+            ) {
+
+                errors.push({
+
+                    provider:
+                        provider.name,
+
+                    error:
+                        data.error ||
+                        data.reason ||
+                        'Provider rejected request'
+
+                });
+
+                continue;
+
+            }
+
+
+            return {
+
+                success:
+                    true,
+
+                provider:
+                    provider.name,
+
+                market:
+                    market,
+
+                symbol:
+                    normalized,
+
+                data:
+                    data
+
+            };
+
+        }
+        catch(error) {
+
+            console.error(
+
+                provider.name +
+                ' failed for ' +
+                normalized +
+                ':',
+
+                error.message
+
+            );
+
+
+            errors.push({
+
+                provider:
+                    provider.name,
+
+                error:
+                    error.message
+
+            });
+
+        }
+
+    }
+
+
+    return {
+
+        success:
+            false,
+
+        status:
+            'all_providers_failed',
+
+        symbol:
+            normalized,
+
+        market:
+            market,
+
+        operation:
+            operation,
+
+        errors:
+            errors
+
+    };
+
 }
 
 
@@ -304,80 +602,43 @@ function findProvider(
 
 async function getPrice(symbol) {
 
-    const normalized =
-        normalizeSymbol(symbol);
+    return executeWithFallback(
+
+        symbol,
+
+        'price',
+
+        'getPrice',
+
+        [
+            normalizeSymbol(symbol)
+        ]
+
+    );
+
+}
 
 
-    const provider =
-        findProvider(
-            normalized,
-            'price'
-        );
+/* =========================================================
+   QUOTE
+   ========================================================= */
 
+async function getQuote(symbol) {
 
-    if (!provider) {
+    return executeWithFallback(
 
-        return {
+        symbol,
 
-            success: false,
+        'quote',
 
-            status: 'unavailable',
+        'getQuote',
 
-            symbol: normalized,
+        [
+            normalizeSymbol(symbol)
+        ]
 
-            market:
-                detectMarket(normalized),
+    );
 
-            reason:
-                'No eligible market-data provider'
-
-        };
-
-    }
-
-
-    try {
-
-        const data =
-            await provider.getPrice(
-                normalized
-            );
-
-
-        return {
-
-            success: true,
-
-            provider:
-                provider.name,
-
-            market:
-                detectMarket(normalized),
-
-            data: data
-
-        };
-
-    } catch (error) {
-
-        return {
-
-            success: false,
-
-            status: 'provider_error',
-
-            provider:
-                provider.name,
-
-            symbol:
-                normalized,
-
-            error:
-                error.message
-
-        };
-
-    }
 }
 
 
@@ -391,197 +652,20 @@ async function getHistory(
     limit
 ) {
 
-    const normalized =
-        normalizeSymbol(symbol);
+    return executeWithFallback(
 
+        symbol,
 
-    const provider =
-        findProvider(
-            normalized,
-            'history'
-        );
+        'history',
 
+        'getHistory',
 
-    if (!provider) {
+        [
+            normalizeSymbol(symbol),
+            interval,
+            limit
+        ]
 
-        return {
-
-            success: false,
-
-            status: 'unavailable',
-
-            symbol: normalized,
-
-            market:
-                detectMarket(normalized),
-
-            reason:
-                'No eligible historical-data provider'
-
-        };
-
-    }
-
-
-    try {
-
-        const data =
-            await provider.getHistory(
-                normalized,
-                interval,
-                limit
-            );
-
-
-        return {
-
-            success: true,
-
-            provider:
-                provider.name,
-
-            market:
-                detectMarket(normalized),
-
-            data: data
-
-        };
-
-    } catch (error) {
-
-        return {
-
-            success: false,
-
-            status: 'provider_error',
-
-            provider:
-                provider.name,
-
-            symbol:
-                normalized,
-
-            error:
-                error.message
-
-        };
-
-    }
-}
-
-
-/* =========================================================
-   QUOTE
-   ========================================================= */
-
-async function getQuote(symbol) {
-
-    const normalized =
-        normalizeSymbol(symbol);
-
-
-    const provider =
-        findProvider(
-            normalized,
-            'quote'
-        );
-
-
-    if (!provider) {
-
-        return {
-
-            success: false,
-
-            status: 'unavailable',
-
-            symbol: normalized,
-
-            market:
-                detectMarket(normalized),
-
-            reason:
-                'No eligible quote provider'
-
-        };
-
-    }
-
-
-    try {
-
-        const data =
-            await provider.getQuote(
-                normalized
-            );
-
-
-        return {
-
-            success: true,
-
-            provider:
-                provider.name,
-
-            market:
-                detectMarket(normalized),
-
-            data: data
-
-        };
-
-    } catch (error) {
-
-        return {
-
-            success: false,
-
-            status: 'provider_error',
-
-            provider:
-                provider.name,
-
-            symbol:
-                normalized,
-
-            error:
-                error.message
-
-        };
-
-    }
-}
-
-
-/* =========================================================
-   STATUS
-   ========================================================= */
-
-function getStatus() {
-
-    return Object.keys(
-        providers
-    ).map(
-        function(name) {
-
-            const provider =
-                providers[name];
-
-
-            return {
-
-                name:
-                    provider.name,
-
-                markets:
-                    provider.markets || [],
-
-                capabilities:
-                    provider.capabilities || []
-
-            };
-
-        }
     );
 
 }
@@ -611,16 +695,16 @@ module.exports = {
     normalizeSymbol:
         normalizeSymbol,
 
-    findProvider:
-        findProvider,
+    findProviders:
+        findProviders,
 
     getPrice:
         getPrice,
 
-    getHistory:
-        getHistory,
-
     getQuote:
-        getQuote
+        getQuote,
+
+    getHistory:
+        getHistory
 
 };
