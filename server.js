@@ -7,6 +7,16 @@ const cors = require('cors');
 
 const marketData = require('./marketData');
 
+const providerManager =
+    require('./providers/providerManager');
+
+const twelveDataProvider =
+    require('./providers/twelveData');
+
+providerManager.registerProvider(
+    twelveDataProvider
+);
+
 const indicators = require('./engine/indicators');
 const marketStructure = require('./engine/marketStructure');
 const signalEngine = require('./engine/signalEngine');
