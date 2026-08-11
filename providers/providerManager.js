@@ -1,73 +1,27 @@
 'use strict';
 
-
-/* =========================================================
-   TRADER AI — UNIVERSAL PROVIDER MANAGER
-   =========================================================
-   
-   Purpose:
-   - Detect market type from symbol
-   - Select suitable provider
-   - Support multiple providers
-   - Keep provider logic outside the AI engine
-   ========================================================= */
-
-
-/* =========================================================
-   PROVIDER REGISTRY
-   ========================================================= */
-
 const providers = {};
 
 
 /* =========================================================
-   REGISTER PROVIDER
+   REGISTER
    ========================================================= */
 
-function registerProvider(
-    provider
-) {
+function registerProvider(provider) {
 
-    if (!provider) {
-        throw new Error(
-            'Provider is required'
-        );
+    if (!provider || !provider.name) {
+        throw new Error('Invalid provider');
     }
 
-
-    if (!provider.name) {
-        throw new Error(
-            'Provider name is required'
-        );
-    }
-
-
-    if (
-        typeof provider.canHandle !==
-        'function'
-    ) {
-
-        throw new Error(
-            'Provider must implement canHandle()'
-        );
-
-    }
-
-
-    providers[
-        provider.name
-    ] = provider;
-
+    providers[provider.name] = provider;
 }
 
 
 /* =========================================================
-   REMOVE PROVIDER
+   REMOVE
    ========================================================= */
 
-function removeProvider(
-    name
-) {
+function removeProvider(name) {
 
     delete providers[name];
 
@@ -75,92 +29,46 @@ function removeProvider(
 
 
 /* =========================================================
-   GET PROVIDERS
+   LIST
    ========================================================= */
 
 function getProviders() {
 
-    return Object.keys(
-        providers
-    );
+    return Object.keys(providers);
 
 }
 
 
 /* =========================================================
-   MARKET TYPE DETECTION
+   MARKET DETECTION
    ========================================================= */
 
-function detectMarket(
-    symbol
-) {
+function detectMarket(symbol) {
 
     const value =
-        String(
-            symbol || ''
-        )
+        String(symbol || '')
         .trim()
         .toUpperCase();
 
 
-    /*
-     * Explicit universal format:
-     *
-     * NSE:RELIANCE
-     * BSE:TCS
-     * FX:EURUSD
-     * US:AAPL
-     */
-
-    if (
-        value.indexOf(
-            'NSE:'
-        ) === 0
-    ) {
-
+    if (value.indexOf('NSE:') === 0) {
         return 'INDIA';
-
     }
 
-
-    if (
-        value.indexOf(
-            'BSE:'
-        ) === 0
-    ) {
-
+    if (value.indexOf('BSE:') === 0) {
         return 'INDIA';
-
     }
 
-
-    if (
-        value.indexOf(
-            'FX:'
-        ) === 0
-    ) {
-
+    if (value.indexOf('FX:') === 0) {
         return 'FOREX';
-
     }
 
-
-    if (
-        value.indexOf(
-            'US:'
-        ) === 0
-    ) {
-
+    if (value.indexOf('US:') === 0) {
         return 'US';
-
     }
 
 
-    /*
-     * Common Indian symbols.
-     */
-
-    const indianSymbols = [
+    const indian = [
 
         'RELIANCE',
         'TCS',
@@ -170,9 +78,9 @@ function detectMarket(
         'SBIN',
         'ITC',
         'LT',
-        'BHARTIARTL',
         'AXISBANK',
         'KOTAKBANK',
+        'BHARTIARTL',
         'MARUTI',
         'TATAMOTORS',
         'ADANIENT',
@@ -185,27 +93,13 @@ function detectMarket(
 
 
     if (
-        indianSymbols.indexOf(
-            value
-        ) >= 0
+        indian.indexOf(value) >= 0
     ) {
-
         return 'INDIA';
-
     }
 
 
-    /*
-     * Forex pair detection.
-     *
-     * EURUSD
-     * GBPUSD
-     * USDJPY
-     * AUDUSD
-     * USDCHF
-     */
-
-    const forexPairs = [
+    const forex = [
 
         'EURUSD',
         'GBPUSD',
@@ -217,9 +111,6 @@ function detectMarket(
         'EURGBP',
         'EURJPY',
         'GBPJPY',
-        'AUDJPY',
-        'EURAUD',
-        'EURCHF',
         'XAUUSD',
         'XAGUSD'
 
@@ -227,130 +118,93 @@ function detectMarket(
 
 
     if (
-        forexPairs.indexOf(
-            value
-        ) >= 0
+        forex.indexOf(value) >= 0
     ) {
-
         return 'FOREX';
-
     }
 
 
-    /*
-     * Default.
-     */
-
     return 'UNKNOWN';
-
 }
 
 
 /* =========================================================
-   NORMALIZE SYMBOL
+   NORMALIZE
    ========================================================= */
 
-function normalizeSymbol(
-    symbol
-) {
+function normalizeSymbol(symbol) {
 
     let value =
-        String(
-            symbol || ''
-        )
+        String(symbol || '')
         .trim()
         .toUpperCase();
 
 
     if (!value) {
-
         throw new Error(
             'Symbol is required'
         );
-
     }
 
-
-    /*
-     * Convert common user formats.
-     */
 
     if (
         value === 'NIFTY50' ||
         value === 'NIFTY 50'
     ) {
 
-        value =
-            'NSE:NIFTY50';
+        return 'NSE:NIFTY50';
 
     }
 
 
     if (
-        value === 'BANK NIFTY' ||
-        value === 'BANKNIFTY'
+        value === 'BANKNIFTY' ||
+        value === 'BANK NIFTY'
     ) {
 
-        value =
-            'NSE:BANKNIFTY';
+        return 'NSE:BANKNIFTY';
 
     }
 
 
     if (
-        value.indexOf(
-            '/'
-        ) > 0
+        value.indexOf('/') > 0
     ) {
 
         value =
-            value.replace(
-                '/',
-                ''
-            );
+            value.replace(/\//g, '');
 
     }
 
 
-    /*
-     * EUR/USD → FX:EURUSD
-     */
+    const forex = [
 
-    const possibleForex =
-        [
+        'EURUSD',
+        'GBPUSD',
+        'USDJPY',
+        'USDCHF',
+        'AUDUSD',
+        'USDCAD',
+        'NZDUSD',
+        'EURGBP',
+        'EURJPY',
+        'GBPJPY',
+        'XAUUSD',
+        'XAGUSD'
 
-            'EURUSD',
-            'GBPUSD',
-            'USDJPY',
-            'USDCHF',
-            'AUDUSD',
-            'USDCAD',
-            'NZDUSD',
-            'EURGBP',
-            'EURJPY',
-            'GBPJPY'
-
-        ];
+    ];
 
 
     if (
-        possibleForex.indexOf(
-            value
-        ) >= 0
+        forex.indexOf(value) >= 0
     ) {
 
-        value =
-            'FX:' +
-            value;
+        return 'FX:' + value;
 
     }
 
 
-    /*
-     * Known Indian stocks.
-     */
-
-    const indianSymbols = [
+    const indian = [
 
         'RELIANCE',
         'TCS',
@@ -360,9 +214,9 @@ function normalizeSymbol(
         'SBIN',
         'ITC',
         'LT',
-        'BHARTIARTL',
         'AXISBANK',
         'KOTAKBANK',
+        'BHARTIARTL',
         'MARUTI',
         'TATAMOTORS',
         'ADANIENT',
@@ -372,20 +226,15 @@ function normalizeSymbol(
 
 
     if (
-        indianSymbols.indexOf(
-            value
-        ) >= 0
+        indian.indexOf(value) >= 0
     ) {
 
-        value =
-            'NSE:' +
-            value;
+        return 'NSE:' + value;
 
     }
 
 
     return value;
-
 }
 
 
@@ -399,21 +248,13 @@ function findProvider(
 ) {
 
     const normalized =
-        normalizeSymbol(
-            symbol
-        );
-
+        normalizeSymbol(symbol);
 
     const market =
-        detectMarket(
-            normalized
-        );
-
+        detectMarket(normalized);
 
     const names =
-        Object.keys(
-            providers
-        );
+        Object.keys(providers);
 
 
     for (
@@ -423,9 +264,7 @@ function findProvider(
     ) {
 
         const provider =
-            providers[
-                names[i]
-            ];
+            providers[names[i]];
 
 
         try {
@@ -442,11 +281,10 @@ function findProvider(
 
             }
 
-        }
-        catch(error) {
+        } catch (error) {
 
             console.error(
-                'Provider check failed:',
+                'Provider check error:',
                 provider.name,
                 error.message
             );
@@ -457,22 +295,17 @@ function findProvider(
 
 
     return null;
-
 }
 
 
 /* =========================================================
-   GET PRICE
+   PRICE
    ========================================================= */
 
-async function getPrice(
-    symbol
-) {
+async function getPrice(symbol) {
 
     const normalized =
-        normalizeSymbol(
-            symbol
-        );
+        normalizeSymbol(symbol);
 
 
     const provider =
@@ -486,19 +319,14 @@ async function getPrice(
 
         return {
 
-            success:
-                false,
+            success: false,
 
-            status:
-                'unavailable',
+            status: 'unavailable',
 
-            symbol:
-                normalized,
+            symbol: normalized,
 
             market:
-                detectMarket(
-                    normalized
-                ),
+                detectMarket(normalized),
 
             reason:
                 'No eligible market-data provider'
@@ -508,35 +336,53 @@ async function getPrice(
     }
 
 
-    const result =
-        await provider.getPrice(
-            normalized
-        );
+    try {
 
-
-    return {
-
-        success:
-            true,
-
-        provider:
-            provider.name,
-
-        market:
-            detectMarket(
+        const data =
+            await provider.getPrice(
                 normalized
-            ),
+            );
 
-        data:
-            result
 
-    };
+        return {
 
+            success: true,
+
+            provider:
+                provider.name,
+
+            market:
+                detectMarket(normalized),
+
+            data: data
+
+        };
+
+    } catch (error) {
+
+        return {
+
+            success: false,
+
+            status: 'provider_error',
+
+            provider:
+                provider.name,
+
+            symbol:
+                normalized,
+
+            error:
+                error.message
+
+        };
+
+    }
 }
 
 
 /* =========================================================
-   GET HISTORY
+   HISTORY
    ========================================================= */
 
 async function getHistory(
@@ -546,9 +392,7 @@ async function getHistory(
 ) {
 
     const normalized =
-        normalizeSymbol(
-            symbol
-        );
+        normalizeSymbol(symbol);
 
 
     const provider =
@@ -562,19 +406,14 @@ async function getHistory(
 
         return {
 
-            success:
-                false,
+            success: false,
 
-            status:
-                'unavailable',
+            status: 'unavailable',
 
-            symbol:
-                normalized,
+            symbol: normalized,
 
             market:
-                detectMarket(
-                    normalized
-                ),
+                detectMarket(normalized),
 
             reason:
                 'No eligible historical-data provider'
@@ -584,47 +423,61 @@ async function getHistory(
     }
 
 
-    const result =
-        await provider.getHistory(
-            normalized,
-            interval,
-            limit
-        );
+    try {
+
+        const data =
+            await provider.getHistory(
+                normalized,
+                interval,
+                limit
+            );
 
 
-    return {
+        return {
 
-        success:
-            true,
+            success: true,
 
-        provider:
-            provider.name,
+            provider:
+                provider.name,
 
-        market:
-            detectMarket(
-                normalized
-            ),
+            market:
+                detectMarket(normalized),
 
-        data:
-            result
+            data: data
 
-    };
+        };
 
+    } catch (error) {
+
+        return {
+
+            success: false,
+
+            status: 'provider_error',
+
+            provider:
+                provider.name,
+
+            symbol:
+                normalized,
+
+            error:
+                error.message
+
+        };
+
+    }
 }
 
 
 /* =========================================================
-   GET QUOTE
+   QUOTE
    ========================================================= */
 
-async function getQuote(
-    symbol
-) {
+async function getQuote(symbol) {
 
     const normalized =
-        normalizeSymbol(
-            symbol
-        );
+        normalizeSymbol(symbol);
 
 
     const provider =
@@ -638,19 +491,14 @@ async function getQuote(
 
         return {
 
-            success:
-                false,
+            success: false,
 
-            status:
-                'unavailable',
+            status: 'unavailable',
 
-            symbol:
-                normalized,
+            symbol: normalized,
 
             market:
-                detectMarket(
-                    normalized
-                ),
+                detectMarket(normalized),
 
             reason:
                 'No eligible quote provider'
@@ -660,46 +508,60 @@ async function getQuote(
     }
 
 
-    const result =
-        await provider.getQuote(
-            normalized
-        );
+    try {
 
-
-    return {
-
-        success:
-            true,
-
-        provider:
-            provider.name,
-
-        market:
-            detectMarket(
+        const data =
+            await provider.getQuote(
                 normalized
-            ),
+            );
 
-        data:
-            result
 
-    };
+        return {
 
+            success: true,
+
+            provider:
+                provider.name,
+
+            market:
+                detectMarket(normalized),
+
+            data: data
+
+        };
+
+    } catch (error) {
+
+        return {
+
+            success: false,
+
+            status: 'provider_error',
+
+            provider:
+                provider.name,
+
+            symbol:
+                normalized,
+
+            error:
+                error.message
+
+        };
+
+    }
 }
 
 
 /* =========================================================
-   PROVIDER STATUS
+   STATUS
    ========================================================= */
 
 function getStatus() {
 
-    const list =
-        Object.keys(
-            providers
-        );
-
-
-    return list.map(
+    return Object.keys(
+        providers
+    ).map(
         function(name) {
 
             const provider =
@@ -712,12 +574,10 @@ function getStatus() {
                     provider.name,
 
                 markets:
-                    provider.markets ||
-                    [],
+                    provider.markets || [],
 
                 capabilities:
-                    provider.capabilities ||
-                    []
+                    provider.capabilities || []
 
             };
 
