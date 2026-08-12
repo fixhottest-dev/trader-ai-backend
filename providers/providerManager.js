@@ -3,24 +3,25 @@
 const providers = {};
 
 
-/* =========================================================
-   REGISTER PROVIDER
-   ========================================================= */
-
 function registerProvider(provider) {
 
-    if (!provider || !provider.name) {
-        throw new Error('Invalid provider');
+    if (
+        !provider ||
+        !provider.name
+    ) {
+
+        throw new Error(
+            'Invalid provider'
+        );
+
     }
 
-    providers[provider.name] = provider;
+    providers[
+        provider.name
+    ] = provider;
 
 }
 
-
-/* =========================================================
-   REMOVE PROVIDER
-   ========================================================= */
 
 function removeProvider(name) {
 
@@ -29,24 +30,20 @@ function removeProvider(name) {
 }
 
 
-/* =========================================================
-   PROVIDER LIST
-   ========================================================= */
-
 function getProviders() {
 
-    return Object.keys(providers);
+    return Object.keys(
+        providers
+    );
 
 }
 
 
-/* =========================================================
-   PROVIDER STATUS
-   ========================================================= */
-
 function getStatus() {
 
-    return Object.keys(providers).map(
+    return Object.keys(
+        providers
+    ).map(
         function(name) {
 
             const provider =
@@ -71,16 +68,12 @@ function getStatus() {
 }
 
 
-/* =========================================================
-   MARKET DETECTION
-   ========================================================= */
-
 function detectMarket(symbol) {
 
     const value =
         String(symbol || '')
-            .trim()
-            .toUpperCase();
+            .toUpperCase()
+            .trim();
 
 
     if (
@@ -102,16 +95,34 @@ function detectMarket(symbol) {
     }
 
 
+    const forex = [
+
+        'EURUSD',
+        'GBPUSD',
+        'USDJPY',
+        'USDCHF',
+        'AUDUSD',
+        'USDCAD',
+        'NZDUSD',
+        'EURGBP',
+        'EURJPY',
+        'GBPJPY',
+        'XAUUSD',
+        'XAGUSD'
+
+    ];
+
+
     if (
-        value.indexOf('US:') === 0
+        forex.indexOf(value) >= 0
     ) {
 
-        return 'US';
+        return 'FOREX';
 
     }
 
 
-    const indianSymbols = [
+    const india = [
 
         'RELIANCE',
         'TCS',
@@ -136,37 +147,10 @@ function detectMarket(symbol) {
 
 
     if (
-        indianSymbols.indexOf(value) >= 0
+        india.indexOf(value) >= 0
     ) {
 
         return 'INDIA';
-
-    }
-
-
-    const forexSymbols = [
-
-        'EURUSD',
-        'GBPUSD',
-        'USDJPY',
-        'USDCHF',
-        'AUDUSD',
-        'USDCAD',
-        'NZDUSD',
-        'EURGBP',
-        'EURJPY',
-        'GBPJPY',
-        'XAUUSD',
-        'XAGUSD'
-
-    ];
-
-
-    if (
-        forexSymbols.indexOf(value) >= 0
-    ) {
-
-        return 'FOREX';
 
     }
 
@@ -175,10 +159,6 @@ function detectMarket(symbol) {
 
 }
 
-
-/* =========================================================
-   SYMBOL NORMALIZATION
-   ========================================================= */
 
 function normalizeSymbol(symbol) {
 
@@ -204,15 +184,10 @@ function normalizeSymbol(symbol) {
         );
 
 
-    /*
-     * Already normalized.
-     */
-
     if (
         value.indexOf('NSE:') === 0 ||
         value.indexOf('BSE:') === 0 ||
-        value.indexOf('FX:') === 0 ||
-        value.indexOf('US:') === 0
+        value.indexOf('FX:') === 0
     ) {
 
         return value;
@@ -220,14 +195,10 @@ function normalizeSymbol(symbol) {
     }
 
 
-    /*
-     * Indian indices.
-     */
-
     if (
+        value === 'NIFTY' ||
         value === 'NIFTY50' ||
-        value === 'NIFTY 50' ||
-        value === 'NIFTY'
+        value === 'NIFTY 50'
     ) {
 
         return 'NSE:NIFTY50';
@@ -245,11 +216,7 @@ function normalizeSymbol(symbol) {
     }
 
 
-    /*
-     * Forex.
-     */
-
-    const forexSymbols = [
+    const forex = [
 
         'EURUSD',
         'GBPUSD',
@@ -268,7 +235,7 @@ function normalizeSymbol(symbol) {
 
 
     if (
-        forexSymbols.indexOf(value) >= 0
+        forex.indexOf(value) >= 0
     ) {
 
         return 'FX:' + value;
@@ -276,11 +243,7 @@ function normalizeSymbol(symbol) {
     }
 
 
-    /*
-     * Indian equities.
-     */
-
-    const indianSymbols = [
+    const india = [
 
         'RELIANCE',
         'TCS',
@@ -302,7 +265,7 @@ function normalizeSymbol(symbol) {
 
 
     if (
-        indianSymbols.indexOf(value) >= 0
+        india.indexOf(value) >= 0
     ) {
 
         return 'NSE:' + value;
@@ -315,79 +278,75 @@ function normalizeSymbol(symbol) {
 }
 
 
-/* =========================================================
-   FIND ELIGIBLE PROVIDERS
-   ========================================================= */
-
 function findProviders(
     symbol,
     operation
 ) {
 
     const normalized =
-        normalizeSymbol(symbol);
+        normalizeSymbol(
+            symbol
+        );
 
 
     const market =
-        detectMarket(normalized);
-
-
-    const names =
-        Object.keys(providers);
+        detectMarket(
+            normalized
+        );
 
 
     const result = [];
 
 
-    for (
-        let i = 0;
-        i < names.length;
-        i++
-    ) {
+    Object.keys(
+        providers
+    ).forEach(
+        function(name) {
 
-        const provider =
-            providers[names[i]];
+            const provider =
+                providers[name];
 
-
-        if (
-            !provider ||
-            typeof provider.canHandle !==
-            'function'
-        ) {
-
-            continue;
-
-        }
-
-
-        try {
 
             if (
-                provider.canHandle(
-                    normalized,
-                    market,
-                    operation
-                )
+                !provider ||
+                typeof provider.canHandle !==
+                'function'
             ) {
 
-                result.push(
-                    provider
+                return;
+
+            }
+
+
+            try {
+
+                if (
+                    provider.canHandle(
+                        normalized,
+                        market,
+                        operation
+                    )
+                ) {
+
+                    result.push(
+                        provider
+                    );
+
+                }
+
+            }
+            catch(error) {
+
+                console.error(
+                    name +
+                    ' eligibility error:',
+                    error.message
                 );
 
             }
 
         }
-        catch(error) {
-
-            console.error(
-                'Provider eligibility error:',
-                provider.name,
-                error.message
-            );
-
-        }
-
-    }
+    );
 
 
     return result;
@@ -395,23 +354,17 @@ function findProviders(
 }
 
 
-/* =========================================================
-   GENERIC FALLBACK EXECUTOR
-   ========================================================= */
-
-async function executeWithFallback(
+async function execute(
     symbol,
     operation,
-    methodName,
+    method,
     args
 ) {
 
     const normalized =
-        normalizeSymbol(symbol);
-
-
-    const market =
-        detectMarket(normalized);
+        normalizeSymbol(
+            symbol
+        );
 
 
     const candidates =
@@ -437,13 +390,12 @@ async function executeWithFallback(
                 normalized,
 
             market:
-                market,
-
-            operation:
-                operation,
+                detectMarket(
+                    normalized
+                ),
 
             reason:
-                'No eligible provider available'
+                'No eligible provider'
 
         };
 
@@ -464,20 +416,9 @@ async function executeWithFallback(
 
 
         if (
-            typeof provider[methodName] !==
+            typeof provider[method] !==
             'function'
         ) {
-
-            errors.push({
-
-                provider:
-                    provider.name,
-
-                error:
-                    methodName +
-                    ' is not implemented'
-
-            });
 
             continue;
 
@@ -487,39 +428,11 @@ async function executeWithFallback(
         try {
 
             const data =
-                await provider[methodName]
+                await provider[method]
                     .apply(
                         provider,
                         args
                     );
-
-
-            /*
-             * Provider may return
-             * either raw data or a
-             * structured response.
-             */
-
-            if (
-                data &&
-                data.success === false
-            ) {
-
-                errors.push({
-
-                    provider:
-                        provider.name,
-
-                    error:
-                        data.error ||
-                        data.reason ||
-                        'Provider rejected request'
-
-                });
-
-                continue;
-
-            }
 
 
             return {
@@ -530,11 +443,13 @@ async function executeWithFallback(
                 provider:
                     provider.name,
 
-                market:
-                    market,
-
                 symbol:
                     normalized,
+
+                market:
+                    detectMarket(
+                        normalized
+                    ),
 
                 data:
                     data
@@ -543,18 +458,6 @@ async function executeWithFallback(
 
         }
         catch(error) {
-
-            console.error(
-
-                provider.name +
-                ' failed for ' +
-                normalized +
-                ':',
-
-                error.message
-
-            );
-
 
             errors.push({
 
@@ -582,12 +485,6 @@ async function executeWithFallback(
         symbol:
             normalized,
 
-        market:
-            market,
-
-        operation:
-            operation,
-
         errors:
             errors
 
@@ -596,13 +493,9 @@ async function executeWithFallback(
 }
 
 
-/* =========================================================
-   PRICE
-   ========================================================= */
-
 async function getPrice(symbol) {
 
-    return executeWithFallback(
+    return execute(
 
         symbol,
 
@@ -619,13 +512,9 @@ async function getPrice(symbol) {
 }
 
 
-/* =========================================================
-   QUOTE
-   ========================================================= */
-
 async function getQuote(symbol) {
 
-    return executeWithFallback(
+    return execute(
 
         symbol,
 
@@ -642,17 +531,13 @@ async function getQuote(symbol) {
 }
 
 
-/* =========================================================
-   HISTORY
-   ========================================================= */
-
 async function getHistory(
     symbol,
     interval,
     limit
 ) {
 
-    return executeWithFallback(
+    return execute(
 
         symbol,
 
@@ -670,10 +555,6 @@ async function getHistory(
 
 }
 
-
-/* =========================================================
-   EXPORT
-   ========================================================= */
 
 module.exports = {
 
