@@ -8,7 +8,7 @@ const cors = require('cors');
 const providerManager =
     require('./providers/providerManager');
 
-const twelveDataProvider =
+const twelveData =
     require('./providers/twelveData');
 
 const indicators =
@@ -28,41 +28,28 @@ const backtestEngine =
 
 
 /* =========================================================
-   PROVIDER REGISTRATION
+   PROVIDERS
    ========================================================= */
 
 providerManager.registerProvider(
-    twelveDataProvider
+    twelveData
 );
 
 
 /* =========================================================
-   EXPRESS
+   APP
    ========================================================= */
 
-const app =
-    express();
+const app = express();
 
-app.use(
-    cors()
-);
+app.use(cors());
 
-app.use(
-    express.json()
-);
+app.use(express.json());
 
-
-/* =========================================================
-   HTTP SERVER
-   ========================================================= */
 
 const server =
     http.createServer(app);
 
-
-/* =========================================================
-   WEBSOCKET
-   ========================================================= */
 
 const wss =
     new WebSocket.Server({
@@ -70,27 +57,17 @@ const wss =
     });
 
 
-/* =========================================================
-   PORT
-   ========================================================= */
-
 const PORT =
     process.env.PORT || 3000;
 
 
 /* =========================================================
-   STATE
+   CACHE
    ========================================================= */
 
-const cache = {};
+const historyCache = {};
 
-
-const DEFAULT_INTERVAL =
-    '1min';
-
-
-const CACHE_MS =
-    15000;
+const CACHE_MS = 15000;
 
 
 /* =========================================================
@@ -98,163 +75,130 @@ const CACHE_MS =
    ========================================================= */
 
 function now() {
-
     return Date.now();
-
 }
 
 
-function safeNumber(value) {
+function number(value) {
 
-    const number =
-        Number(value);
+    const n = Number(value);
 
-    return Number.isFinite(number)
-        ? number
+    return Number.isFinite(n)
+        ? n
         : 0;
 
 }
 
 
-/* =========================================================
-   NORMALIZE CANDLES
-   ========================================================= */
+function normalizeCandles(candles) {
 
-function normalizeCandles(
-    candles
-) {
-
-    if (
-        !Array.isArray(candles)
-    ) {
-
+    if (!Array.isArray(candles)) {
         return [];
-
     }
 
-
     return candles
+        .map(function(c) {
 
-        .map(
-            function(candle) {
+            return {
 
-                return {
+                time:
+                    c.time ||
+                    c.datetime ||
+                    null,
 
-                    time:
-                        candle.time ||
-                        candle.datetime ||
-                        null,
+                open:
+                    number(c.open),
 
-                    open:
-                        safeNumber(
-                            candle.open
-                        ),
+                high:
+                    number(c.high),
 
-                    high:
-                        safeNumber(
-                            candle.high
-                        ),
+                low:
+                    number(c.low),
 
-                    low:
-                        safeNumber(
-                            candle.low
-                        ),
+                close:
+                    number(c.close),
 
-                    close:
-                        safeNumber(
-                            candle.close
-                        ),
+                volume:
+                    number(c.volume)
 
-                    volume:
-                        safeNumber(
-                            candle.volume
-                        )
+            };
 
-                };
+        })
+        .filter(function(c) {
 
-            }
-        )
+            return (
+                c.open > 0 &&
+                c.high > 0 &&
+                c.low > 0 &&
+                c.close > 0
+            );
 
-        .filter(
-            function(candle) {
-
-                return (
-
-                    candle.open > 0 &&
-
-                    candle.high > 0 &&
-
-                    candle.low > 0 &&
-
-                    candle.close > 0
-
-                );
-
-            }
-        );
+        });
 
 }
 
 
 /* =========================================================
-   LOAD MARKET HISTORY
+   HISTORY
    ========================================================= */
 
 async function loadHistory(
     symbol,
     interval,
-    outputsize
+    limit
 ) {
 
-    const normalizedSymbol =
+    const normalized =
         providerManager.normalizeSymbol(
             symbol
         );
 
 
     const selectedInterval =
-        interval ||
-        DEFAULT_INTERVAL;
+        interval || '1min';
+
+
+    const selectedLimit =
+        Math.max(
+            1,
+            Math.min(
+                Number(limit) || 500,
+                5000
+            )
+        );
 
 
     const key =
-        normalizedSymbol +
+        normalized +
         ':' +
         selectedInterval +
         ':' +
-        outputsize;
+        selectedLimit;
 
 
-    const existing =
-        cache[key];
+    const cached =
+        historyCache[key];
 
-
-    /*
-     * Short cache.
-     */
 
     if (
-        existing &&
-        (
-            now() -
-            existing.timestamp
-        ) < CACHE_MS
+        cached &&
+        now() - cached.time < CACHE_MS
     ) {
 
-        return existing.data;
+        return cached.data;
 
     }
 
 
-    /*
-     * Provider Manager.
-     */
-
     const result =
         await providerManager.getHistory(
-            normalizedSymbol,
+
+            normalized,
+
             selectedInterval,
-            outputsize
+
+            selectedLimit
+
         );
 
 
@@ -280,23 +224,17 @@ async function loadHistory(
 
             :
 
-            'Historical market data unavailable'
+            'Market history unavailable'
 
         );
 
     }
 
 
-    const providerData =
-        result.data;
-
-
     const candles =
         normalizeCandles(
-
-            providerData &&
-            providerData.candles
-
+            result.data &&
+            result.data.candles
         );
 
 
@@ -311,9 +249,9 @@ async function loadHistory(
     }
 
 
-    cache[key] = {
+    historyCache[key] = {
 
-        timestamp:
+        time:
             now(),
 
         data:
@@ -328,71 +266,14 @@ async function loadHistory(
 
 
 /* =========================================================
-   MARKET SNAPSHOT
+   INDICATORS
    ========================================================= */
 
-async function getMarketSnapshot(
-    symbol
-) {
-
-    const normalizedSymbol =
-        providerManager.normalizeSymbol(
-            symbol
-        );
-
-
-    const result =
-        await providerManager.getQuote(
-            normalizedSymbol
-        );
-
-
-    if (
-        !result ||
-        !result.success
-    ) {
-
-        throw new Error(
-
-            result &&
-            (
-                result.error ||
-                result.reason
-            )
-
-            ?
-
-            (
-                result.error ||
-                result.reason
-            )
-
-            :
-
-            'Market quote unavailable'
-
-        );
-
-    }
-
-
-    return result;
-
-}
-
-
-/* =========================================================
-   TECHNICAL INDICATORS
-   ========================================================= */
-
-function calculateIndicators(
-    candles
-) {
+function calculateIndicators(candles) {
 
     if (
         indicators &&
-        typeof indicators.analyze ===
-        'function'
+        typeof indicators.analyze === 'function'
     ) {
 
         return indicators.analyze(
@@ -404,8 +285,7 @@ function calculateIndicators(
 
     if (
         indicators &&
-        typeof indicators.calculate ===
-        'function'
+        typeof indicators.calculate === 'function'
     ) {
 
         return indicators.calculate(
@@ -419,34 +299,15 @@ function calculateIndicators(
 
         price:
             candles.length
+                ? candles[candles.length - 1].close
+                : 0,
 
-                ?
-
-                candles[
-                    candles.length - 1
-                ].close
-
-                :
-
-                0,
-
-        ema20:
-            null,
-
-        ema50:
-            null,
-
-        ema200:
-            null,
-
-        rsi14:
-            null,
-
-        macd:
-            null,
-
-        atr14:
-            null
+        ema20: null,
+        ema50: null,
+        ema200: null,
+        rsi14: null,
+        macd: null,
+        atr14: null
 
     };
 
@@ -457,14 +318,11 @@ function calculateIndicators(
    MARKET STRUCTURE
    ========================================================= */
 
-function calculateStructure(
-    candles
-) {
+function calculateStructure(candles) {
 
     if (
         marketStructure &&
-        typeof marketStructure.analyze ===
-        'function'
+        typeof marketStructure.analyze === 'function'
     ) {
 
         return marketStructure.analyze(
@@ -476,8 +334,7 @@ function calculateStructure(
 
     if (
         marketStructure &&
-        typeof marketStructure.detect ===
-        'function'
+        typeof marketStructure.detect === 'function'
     ) {
 
         return marketStructure.detect(
@@ -489,14 +346,11 @@ function calculateStructure(
 
     return {
 
-        trend:
-            'NEUTRAL',
+        trend: 'NEUTRAL',
 
-        support:
-            null,
+        support: null,
 
-        resistance:
-            null
+        resistance: null
 
     };
 
@@ -504,25 +358,28 @@ function calculateStructure(
 
 
 /* =========================================================
-   SIGNAL ENGINE
+   SIGNAL
    ========================================================= */
 
 function calculateSignal(
     candles,
-    indicatorData,
+    indicatorsData,
     structure
 ) {
 
     if (
         signalEngine &&
-        typeof signalEngine.analyze ===
-        'function'
+        typeof signalEngine.analyze === 'function'
     ) {
 
         return signalEngine.analyze(
+
             candles,
-            indicatorData,
+
+            indicatorsData,
+
             structure
+
         );
 
     }
@@ -530,14 +387,17 @@ function calculateSignal(
 
     if (
         signalEngine &&
-        typeof signalEngine.generateSignal ===
-        'function'
+        typeof signalEngine.generateSignal === 'function'
     ) {
 
         return signalEngine.generateSignal(
+
             candles,
-            indicatorData,
+
+            indicatorsData,
+
             structure
+
         );
 
     }
@@ -545,19 +405,14 @@ function calculateSignal(
 
     return {
 
-        signal:
-            'WAIT',
+        signal: 'WAIT',
 
-        confidence:
-            0,
+        confidence: 0,
 
-        score:
-            0,
+        score: 0,
 
         reasons: [
-
             'Signal engine unavailable'
-
         ]
 
     };
@@ -569,21 +424,13 @@ function calculateSignal(
    BACKTEST
    ========================================================= */
 
-function calculateBacktest(
-    candles
-) {
+function calculateBacktest(candles) {
 
-    if (
-        !backtestEngine
-    ) {
+    if (!backtestEngine) {
 
         return {
 
-            available:
-                false,
-
-            reason:
-                'Backtest engine unavailable'
+            available: false
 
         };
 
@@ -593,8 +440,7 @@ function calculateBacktest(
     try {
 
         if (
-            typeof backtestEngine.analyze ===
-            'function'
+            typeof backtestEngine.analyze === 'function'
         ) {
 
             return backtestEngine.analyze(
@@ -605,8 +451,7 @@ function calculateBacktest(
 
 
         if (
-            typeof backtestEngine.run ===
-            'function'
+            typeof backtestEngine.run === 'function'
         ) {
 
             return backtestEngine.run(
@@ -617,8 +462,7 @@ function calculateBacktest(
 
 
         if (
-            typeof backtestEngine.backtest ===
-            'function'
+            typeof backtestEngine.backtest === 'function'
         ) {
 
             return backtestEngine.backtest(
@@ -627,24 +471,12 @@ function calculateBacktest(
 
         }
 
-
-        return {
-
-            available:
-                false,
-
-            reason:
-                'No supported backtest function'
-
-        };
-
     }
     catch(error) {
 
         return {
 
-            available:
-                false,
+            available: false,
 
             error:
                 error.message
@@ -652,6 +484,13 @@ function calculateBacktest(
         };
 
     }
+
+
+    return {
+
+        available: false
+
+    };
 
 }
 
@@ -665,26 +504,25 @@ async function analyzeSymbol(
     interval
 ) {
 
-    const normalizedSymbol =
+    const normalized =
         providerManager.normalizeSymbol(
             symbol
         );
 
 
     const selectedInterval =
-        interval ||
-        DEFAULT_INTERVAL;
+        interval || '1min';
 
-
-    /*
-     * Historical candles.
-     */
 
     const candles =
         await loadHistory(
-            normalizedSymbol,
+
+            normalized,
+
             selectedInterval,
+
             500
+
         );
 
 
@@ -694,9 +532,7 @@ async function analyzeSymbol(
 
         throw new Error(
 
-            'Not enough historical candles for ' +
-            normalizedSymbol +
-            '. Received: ' +
+            'Not enough candles. Received ' +
             candles.length
 
         );
@@ -704,19 +540,11 @@ async function analyzeSymbol(
     }
 
 
-    /*
-     * Indicators.
-     */
-
     const indicatorData =
         calculateIndicators(
             candles
         );
 
-
-    /*
-     * Structure.
-     */
 
     const structure =
         calculateStructure(
@@ -724,21 +552,17 @@ async function analyzeSymbol(
         );
 
 
-    /*
-     * Technical signal.
-     */
-
     const signal =
         calculateSignal(
+
             candles,
+
             indicatorData,
+
             structure
+
         );
 
-
-    /*
-     * Backtest.
-     */
 
     const backtest =
         calculateBacktest(
@@ -746,36 +570,15 @@ async function analyzeSymbol(
         );
 
 
-    /*
-     * Current timeframe.
-     *
-     * Multi-timeframe engine will be
-     * expanded later.
-     */
-
-    const timeframeAnalyses = {};
-
-
-    timeframeAnalyses[
-        selectedInterval
-    ] =
-        signal;
-
-
-    /*
-     * AI decision.
-     */
-
-    let decision;
+    let ai;
 
 
     if (
         aiEngine &&
-        typeof aiEngine.analyze ===
-        'function'
+        typeof aiEngine.analyze === 'function'
     ) {
 
-        decision =
+        ai =
             aiEngine.analyze(
 
                 signal,
@@ -784,23 +587,23 @@ async function analyzeSymbol(
 
                 structure,
 
-                timeframeAnalyses
+                {
+                    [selectedInterval]:
+                        signal
+                }
 
             );
 
     }
     else {
 
-        decision = {
+        ai = {
 
             decision:
-                signal.signal ||
-                'WAIT',
+                signal.signal || 'WAIT',
 
             confidence:
-                safeNumber(
-                    signal.confidence
-                ),
+                number(signal.confidence),
 
             warning:
                 'AI engine unavailable'
@@ -810,24 +613,14 @@ async function analyzeSymbol(
     }
 
 
-    /*
-     * Latest candle.
-     */
-
-    const latest =
-        candles[
-            candles.length - 1
-        ];
-
-
     return {
 
         symbol:
-            normalizedSymbol,
+            normalized,
 
         market:
             providerManager.detectMarket(
-                normalizedSymbol
+                normalized
             ),
 
         interval:
@@ -836,14 +629,11 @@ async function analyzeSymbol(
         timestamp:
             now(),
 
-        candles:
-            candles,
-
         candleCount:
             candles.length,
 
         latest:
-            latest,
+            candles[candles.length - 1],
 
         indicators:
             indicatorData,
@@ -855,13 +645,10 @@ async function analyzeSymbol(
             signal,
 
         ai:
-            decision,
+            ai,
 
         backtest:
-            backtest,
-
-        source:
-            'provider-manager'
+            backtest
 
     };
 
@@ -872,40 +659,34 @@ async function analyzeSymbol(
    ROOT
    ========================================================= */
 
-app.get(
-    '/',
-    function(req, res) {
+app.get('/', function(req, res) {
 
-        res.json({
+    res.json({
 
-            app:
-                'Trader AI',
+        app:
+            'Trader AI',
 
-            status:
-                'online',
+        status:
+            'online',
 
-            version:
-                '2.1.0',
+        version:
+            '3.0.0',
 
-            websocket:
-                'enabled',
+        websocket:
+            true,
 
-            mode:
-                'PROVIDER-BASED',
+        architecture:
+            'multi-provider',
 
-            engine:
-                'multi-factor',
+        providers:
+            providerManager.getProviders(),
 
-            providers:
-                providerManager.getProviders(),
+        warning:
+            'Market analysis is probabilistic and does not guarantee future price movement.'
 
-            warning:
-                'Analysis is probabilistic and does not guarantee future price movement.'
+    });
 
-        });
-
-    }
-);
+});
 
 
 /* =========================================================
@@ -920,11 +701,6 @@ app.get(
 
             status:
                 'ok',
-
-            providerCount:
-                providerManager
-                    .getProviders()
-                    .length,
 
             providers:
                 providerManager.getProviders(),
@@ -976,53 +752,35 @@ app.get(
 
         try {
 
-            const symbol =
-                req.params.symbol;
-
-
             const result =
                 await providerManager.getPrice(
-                    symbol
+                    req.params.symbol
                 );
 
 
-            if (
-                !result.success
-            ) {
+            if (!result.success) {
 
                 return res
                     .status(503)
-                    .json(
-                        result
-                    );
+                    .json(result);
 
             }
 
 
-            res.json(
-                result
-            );
+            res.json(result);
 
         }
         catch(error) {
 
-            console.error(
-                'Price error:',
-                error
-            );
+            res.status(500).json({
 
+                success:
+                    false,
 
-            res
-                .status(500)
-                .json({
+                error:
+                    error.message
 
-                    success:
-                        false,
-
-                    error:
-                        error.message
-
-                });
+            });
 
         }
 
@@ -1046,43 +804,29 @@ app.get(
                 );
 
 
-            if (
-                !result.success
-            ) {
+            if (!result.success) {
 
                 return res
                     .status(503)
-                    .json(
-                        result
-                    );
+                    .json(result);
 
             }
 
 
-            res.json(
-                result
-            );
+            res.json(result);
 
         }
         catch(error) {
 
-            console.error(
-                'Quote error:',
-                error
-            );
+            res.status(500).json({
 
+                success:
+                    false,
 
-            res
-                .status(500)
-                .json({
+                error:
+                    error.message
 
-                    success:
-                        false,
-
-                    error:
-                        error.message
-
-                });
+            });
 
         }
 
@@ -1100,39 +844,18 @@ app.get(
 
         try {
 
-            const symbol =
-                req.params.symbol;
-
-
             const interval =
                 String(
                     req.query.interval ||
-                    DEFAULT_INTERVAL
+                    '1min'
                 );
 
 
-            let limit =
-                Number(
-                    req.query.limit ||
-                    500
-                );
-
-
-            if (
-                !Number.isFinite(limit)
-            ) {
-
-                limit =
-                    500;
-
-            }
-
-
-            limit =
+            const limit =
                 Math.max(
                     1,
                     Math.min(
-                        limit,
+                        Number(req.query.limit) || 500,
                         5000
                     )
                 );
@@ -1140,9 +863,13 @@ app.get(
 
             const candles =
                 await loadHistory(
-                    symbol,
+
+                    req.params.symbol,
+
                     interval,
+
                     limit
+
                 );
 
 
@@ -1153,12 +880,7 @@ app.get(
 
                 symbol:
                     providerManager.normalizeSymbol(
-                        symbol
-                    ),
-
-                market:
-                    providerManager.detectMarket(
-                        symbol
+                        req.params.symbol
                     ),
 
                 interval:
@@ -1177,12 +899,6 @@ app.get(
 
         }
         catch(error) {
-
-            console.error(
-                'History error:',
-                error
-            );
-
 
             res
                 .status(503)
@@ -1212,21 +928,16 @@ app.get(
 
         try {
 
-            const symbol =
-                req.params.symbol;
-
-
-            const interval =
-                String(
-                    req.query.interval ||
-                    DEFAULT_INTERVAL
-                );
-
-
             const result =
                 await analyzeSymbol(
-                    symbol,
-                    interval
+
+                    req.params.symbol,
+
+                    String(
+                        req.query.interval ||
+                        '1min'
+                    )
+
                 );
 
 
@@ -1242,12 +953,6 @@ app.get(
 
         }
         catch(error) {
-
-            console.error(
-                'Analysis error:',
-                error
-            );
-
 
             res
                 .status(503)
@@ -1275,11 +980,6 @@ wss.on(
     'connection',
     function(ws) {
 
-        console.log(
-            'Trader AI client connected'
-        );
-
-
         ws.send(
             JSON.stringify({
 
@@ -1288,9 +988,6 @@ wss.on(
 
                 timestamp:
                     now(),
-
-                message:
-                    'Trader AI analysis server online',
 
                 providers:
                     providerManager.getProviders()
@@ -1313,27 +1010,62 @@ wss.on(
 
                     const type =
                         String(
-                            request.type ||
-                            ''
+                            request.type || ''
                         )
-                        .trim()
                         .toUpperCase();
 
 
-                    /* =====================================
-                       GET PRICE
-                       ===================================== */
+                    if (
+                        type === 'PING'
+                    ) {
+
+                        ws.send(
+                            JSON.stringify({
+
+                                type:
+                                    'PONG',
+
+                                timestamp:
+                                    now()
+
+                            })
+                        );
+
+                        return;
+
+                    }
+
 
                     if (
-                        type ===
-                        'GET_PRICE'
+                        type === 'PROVIDERS'
+                    ) {
+
+                        ws.send(
+                            JSON.stringify({
+
+                                type:
+                                    'PROVIDERS',
+
+                                providers:
+                                    providerManager
+                                        .getStatus()
+
+                            })
+                        );
+
+                        return;
+
+                    }
+
+
+                    if (
+                        type === 'GET_PRICE'
                     ) {
 
                         const result =
-                            await providerManager
-                                .getPrice(
-                                    request.symbol
-                                );
+                            await providerManager.getPrice(
+                                request.symbol
+                            );
 
 
                         ws.send(
@@ -1348,26 +1080,19 @@ wss.on(
                             })
                         );
 
-
                         return;
 
                     }
 
 
-                    /* =====================================
-                       GET QUOTE
-                       ===================================== */
-
                     if (
-                        type ===
-                        'GET_QUOTE'
+                        type === 'GET_QUOTE'
                     ) {
 
                         const result =
-                            await providerManager
-                                .getQuote(
-                                    request.symbol
-                                );
+                            await providerManager.getQuote(
+                                request.symbol
+                            );
 
 
                         ws.send(
@@ -1382,65 +1107,25 @@ wss.on(
                             })
                         );
 
-
                         return;
 
                     }
 
 
-                    /* =====================================
-                       GET HISTORY
-                       ===================================== */
-
                     if (
-                        type ===
-                        'GET_HISTORY'
+                        type === 'GET_HISTORY'
                     ) {
-
-                        const interval =
-                            String(
-                                request.interval ||
-                                DEFAULT_INTERVAL
-                            );
-
-
-                        let limit =
-                            Number(
-                                request.limit ||
-                                500
-                            );
-
-
-                        if (
-                            !Number.isFinite(
-                                limit
-                            )
-                        ) {
-
-                            limit =
-                                500;
-
-                        }
-
-
-                        limit =
-                            Math.max(
-                                1,
-                                Math.min(
-                                    limit,
-                                    5000
-                                )
-                            );
-
 
                         const candles =
                             await loadHistory(
 
                                 request.symbol,
 
-                                interval,
+                                request.interval ||
+                                '1min',
 
-                                limit
+                                request.limit ||
+                                500
 
                             );
 
@@ -1451,52 +1136,28 @@ wss.on(
                                 type:
                                     'HISTORY',
 
-                                symbol:
-                                    providerManager
-                                        .normalizeSymbol(
-                                            request.symbol
-                                        ),
-
-                                interval:
-                                    interval,
-
-                                count:
-                                    candles.length,
-
                                 candles:
                                     candles
 
                             })
                         );
 
-
                         return;
 
                     }
 
 
-                    /* =====================================
-                       ANALYZE
-                       ===================================== */
-
                     if (
-                        type ===
-                        'ANALYZE'
+                        type === 'ANALYZE'
                     ) {
-
-                        const interval =
-                            String(
-                                request.interval ||
-                                DEFAULT_INTERVAL
-                            );
-
 
                         const result =
                             await analyzeSymbol(
 
                                 request.symbol,
 
-                                interval
+                                request.interval ||
+                                '1min'
 
                             );
 
@@ -1513,70 +1174,10 @@ wss.on(
                             })
                         );
 
-
                         return;
 
                     }
 
-
-                    /* =====================================
-                       PROVIDER STATUS
-                       ===================================== */
-
-                    if (
-                        type ===
-                        'PROVIDERS'
-                    ) {
-
-                        ws.send(
-                            JSON.stringify({
-
-                                type:
-                                    'PROVIDERS',
-
-                                providers:
-                                    providerManager
-                                        .getStatus()
-
-                            })
-                        );
-
-
-                        return;
-
-                    }
-
-
-                    /* =====================================
-                       PING
-                       ===================================== */
-
-                    if (
-                        type ===
-                        'PING'
-                    ) {
-
-                        ws.send(
-                            JSON.stringify({
-
-                                type:
-                                    'PONG',
-
-                                timestamp:
-                                    now()
-
-                            })
-                        );
-
-
-                        return;
-
-                    }
-
-
-                    /* =====================================
-                       UNKNOWN
-                       ===================================== */
 
                     ws.send(
                         JSON.stringify({
@@ -1592,12 +1193,6 @@ wss.on(
 
                 }
                 catch(error) {
-
-                    console.error(
-                        'WebSocket error:',
-                        error
-                    );
-
 
                     ws.send(
                         JSON.stringify({
@@ -1616,24 +1211,12 @@ wss.on(
             }
         );
 
-
-        ws.on(
-            'close',
-            function() {
-
-                console.log(
-                    'Trader AI client disconnected'
-                );
-
-            }
-        );
-
     }
 );
 
 
 /* =========================================================
-   SERVER
+   START
    ========================================================= */
 
 server.listen(
@@ -1641,7 +1224,7 @@ server.listen(
     function() {
 
         console.log(
-            'Trader AI listening on port ' +
+            'Trader AI running on port ' +
             PORT
         );
 
